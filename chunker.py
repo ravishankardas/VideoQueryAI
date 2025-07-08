@@ -4,6 +4,19 @@ import os
 from typing import List, Dict
 from sentence_transformers import SentenceTransformer
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_experimental.text_splitter import SemanticChunker
+
+
+class LocalEmbeddings:
+    def __init__(self):
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+    
+    def embed_documents(self, texts):
+        return self.model.encode(texts).tolist()
+    
+    def embed_query(self, text):
+        return self.model.encode([text])[0].tolist()
+                
 
 def find_chunk_timestamps(chunk_text: str, segments: List[Dict]) -> Dict:
     """
@@ -106,6 +119,43 @@ def find_chunk_timestamps(chunk_text: str, segments: List[Dict]) -> Dict:
         'end_seconds': first_segment.get('end_seconds', 0)
     }
 
+
+def get_chunks(full_text: str, chunk_type: str = 'semantic') -> List[str]:
+    """
+    Split full text into chunks using LangChain
+    Args:
+        full_text: The complete text to be chunked
+        chunk_type: Type of chunking to perform ('semantic' or 'recursive')
+    """
+
+    if chunk_type == 'recursive':
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,        # Characters per chunk
+            chunk_overlap=200,      # Overlap between chunks
+            length_function=len,
+            separators=["\n\n", "\n", ". ", " ", ""]  # Split on paragraphs, sentences, etc.
+        )
+        
+        # Split text into chunks
+        text_chunks = text_splitter.split_text(full_text)
+        return text_chunks
+    
+        
+    embeddings = LocalEmbeddings()
+
+    semantic_chunker = SemanticChunker(
+        embeddings=embeddings, # type: ignore
+        breakpoint_threshold_type="percentile",  # or "standard_deviation"
+        breakpoint_threshold_amount=95,          # Top 5% of similarity drops = boundaries
+        number_of_chunks=None,                   # Let it decide chunk count
+        sentence_split_regex=r'(?<=[.!?])\s+',  # Split on sentence boundaries
+    )
+    
+    # Create semantic chunks
+    text_chunks = semantic_chunker.split_text(full_text)
+
+    return text_chunks
+
 def process_transcription_for_rag_langchain(transcription_file: str, video_metadata: Dict) -> List[Dict]:
     """
     Enhanced pipeline with citation tracking - handles both fast and slow transcript formats
@@ -138,16 +188,8 @@ def process_transcription_for_rag_langchain(transcription_file: str, video_metad
     else:
         print("❌ No segments found!")
     
-    # Initialize LangChain text splitter for semantic chunking
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,        # Characters per chunk
-        chunk_overlap=200,      # Overlap between chunks
-        length_function=len,
-        separators=["\n\n", "\n", ". ", " ", ""]  # Split on paragraphs, sentences, etc.
-    )
     
-    # Split text into chunks
-    text_chunks = text_splitter.split_text(full_text)
+    text_chunks = get_chunks(full_text)
     
     print(f"Created {len(text_chunks)} chunks using LangChain")
     
