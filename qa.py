@@ -191,7 +191,8 @@ def answer_question(query: str, collection_name="youtube_videos"):
         metadata = results['metadatas'][0][i] #type: ignore
         
         # Create citation
-        citation = f"Source {i+1}: '{metadata['video_title']}' at {metadata.get('start_time', 'Unknown')}-{metadata.get('end_time', 'Unknown')}"
+        citation = ""
+        # citation = f"Source {i+1}: '{metadata['video_title']}' at {metadata.get('start_time', 'Unknown')}-{metadata.get('end_time', 'Unknown')}"
         if metadata.get('video_url') and metadata.get('start_seconds'):
             timestamped_url = f"{metadata['video_url']}&t={int(metadata.get('start_seconds', 0))}s" #type: ignore
             citation += f" ({timestamped_url})"
