@@ -17,6 +17,9 @@ os.environ["GRADIO_SERVER_PORT"] = str(PORT)
 
 import gradio as gr # type: ignore
 import re
+import requests
+from PIL import Image
+import io
 
 # Your existing code here...
 from pipeline import YouTubeRAGPipeline
@@ -27,6 +30,52 @@ pipeline = YouTubeRAGPipeline()
 # Store processed videos globally
 processed_videos = {}
 
+def extract_video_id(youtube_url):
+    """Extract video ID from YouTube URL"""
+    patterns = [
+        r'(?:v=|\/)([0-9A-Za-z_-]{11}).*',
+        r'(?:embed\/)([0-9A-Za-z_-]{11})',
+        r'(?:youtu\.be\/)([0-9A-Za-z_-]{11})'
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, youtube_url)
+        if match:
+            return match.group(1)
+    return None
+
+def get_video_thumbnail(youtube_url):
+    """Get video thumbnail from YouTube URL"""
+    try:
+        video_id = extract_video_id(youtube_url)
+        if not video_id:
+            return None
+        
+        # Try different thumbnail qualities (maxresdefault, hqdefault, mqdefault, sddefault)
+        thumbnail_urls = [
+            f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg",
+            f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
+            f"https://img.youtube.com/vi/{video_id}/mqdefault.jpg",
+            f"https://img.youtube.com/vi/{video_id}/sddefault.jpg"
+        ]
+        
+        for url in thumbnail_urls:
+            try:
+                response = requests.get(url, timeout=10)
+                if response.status_code == 200:
+                    # Check if it's a valid image (not a default "no thumbnail" image)
+                    img = Image.open(io.BytesIO(response.content))
+                    # YouTube's default thumbnail is 120x90, we want higher quality
+                    if img.size[0] > 120:
+                        return img
+            except:
+                continue
+        
+        return None
+    except Exception as e:
+        print(f"Error getting thumbnail: {e}")
+        return None
+
 def validate_youtube_url(url):
     """Validate if URL is from YouTube"""
     youtube_regex = r'(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+'
@@ -35,16 +84,19 @@ def validate_youtube_url(url):
 def process_video(youtube_url):
     """Process a YouTube video"""
     if not youtube_url:
-        return "❌ Please enter a YouTube URL", "", ""
+        return "❌ Please enter a YouTube URL", "", "", None
     
     if not validate_youtube_url(youtube_url):
-        return "❌ Please enter a valid YouTube URL", "", ""
+        return "❌ Please enter a valid YouTube URL", "", "", None
     
     try:
+        # Get thumbnail first
+        thumbnail = get_video_thumbnail(youtube_url)
+        
         # Check if already processed
         for uuid, info in processed_videos.items():
             if info['url'] == youtube_url:
-                return f"✅ Video already processed: {info['title']}", info['title'], uuid
+                return f"✅ Video already processed: {info['title']}", info['title'], uuid, info.get('thumbnail', thumbnail)
         
         result = pipeline.process_video(youtube_url)
         
@@ -70,19 +122,20 @@ def process_video(youtube_url):
             print(f"Debug - Extracted title: {title}")
             print(f"Debug - Result keys: {list(result.keys()) if hasattr(result, 'keys') else 'No keys'}")
             
-            # Store processed video
+            # Store processed video with thumbnail
             processed_videos[uuid] = {
                 'title': title,
                 'url': youtube_url,
-                'metadata': result.get('metadata', {})
+                'metadata': result.get('metadata', {}),
+                'thumbnail': thumbnail
             }
             
-            return f"✅ Successfully processed: {title}", title, uuid
+            return f"✅ Successfully processed: {title}", title, uuid, thumbnail
         else:
-            return "❌ Failed to process video. Please try again.", "", ""
+            return "❌ Failed to process video. Please try again.", "", "", thumbnail
             
     except Exception as e:
-        return f"❌ Error: {str(e)}", "", ""
+        return f"❌ Error: {str(e)}", "", "", None
 
 def ask_question(question, video_uuid, chat_history):
     """Ask a question about the processed video and update chat"""
@@ -108,10 +161,16 @@ def reset_everything():
     """Reset all data"""
     global processed_videos
     processed_videos.clear()
-    return "", "", "", [], "", ""  # Clear all components
+    return "", "", "", [], "", "", None  # Clear all components including thumbnail
+
+def update_thumbnail_display(video_title, video_uuid):
+    """Update thumbnail when video changes"""
+    if video_uuid and video_uuid in processed_videos:
+        return processed_videos[video_uuid].get('thumbnail', None)
+    return None
 
 # Create Gradio interface
-with gr.Blocks(title="VideoQuery AI") as app:
+with gr.Blocks(title="VideoQuery AI", theme=gr.themes.Soft()) as app:
     
     # Header
     gr.Markdown("""
@@ -121,36 +180,53 @@ with gr.Blocks(title="VideoQuery AI") as app:
     """)
     
     with gr.Row():
-        with gr.Column():
+        with gr.Column(scale=1):
             gr.Markdown("## 📹 Process Video")
             
             # Video processing section
             youtube_url = gr.Textbox(
                 label="YouTube URL",
-                placeholder="https://www.youtube.com/watch?v=..."
+                placeholder="https://www.youtube.com/watch?v=...",
+                lines=1
             )
             
-            process_btn = gr.Button("🚀 Process Video", variant="primary")
-            reset_btn = gr.Button("🔄 Reset All", variant="secondary")
-            process_status = gr.Textbox(label="Status", interactive=False)
+            with gr.Row():
+                process_btn = gr.Button("🚀 Process Video", variant="primary", size="lg")
+                reset_btn = gr.Button("🔄 Reset All", variant="secondary")
+            
+            process_status = gr.Textbox(label="Status", interactive=False, lines=2)
+            
+            # Video thumbnail display
+            video_thumbnail = gr.Image(
+                label="Video Thumbnail",
+                show_label=True,
+                height=200,
+                interactive=False
+            )
+            
+            # Video info display
+            # with gr.Group():
+            #     gr.Markdown("### 📊 Video Info")
+            #     selected_video_display = gr.Textbox(
+            #         label="Current Video",
+            #         interactive=False,
+            #         lines=2
+            #     )
             
             # Hidden components to store video info
             current_video_title = gr.Textbox(visible=False)
             current_video_uuid = gr.Textbox(visible=False)
             
-        with gr.Column():
+        with gr.Column(scale=2):
             gr.Markdown("## ❓ Ask Questions")
-            
-            selected_video_display = gr.Textbox(
-                label="Current Video",
-                interactive=False
-            )
             
             # Chat interface
             chatbot = gr.Chatbot(
                 label="Conversation",
-                height=400,
-                show_label=True
+                height=500,
+                show_label=True,
+                avatar_images=("👤", "🤖"),
+                bubble_full_width=False
             )
             
             # Question input at bottom
@@ -159,33 +235,41 @@ with gr.Blocks(title="VideoQuery AI") as app:
                     label="",
                     placeholder="Ask a question about the video...",
                     scale=4,
-                    show_label=False
+                    show_label=False,
+                    lines=1
                 )
-                ask_btn = gr.Button("Send", variant="primary", scale=1)
+                ask_btn = gr.Button("Send", variant="primary", scale=1, size="lg")
     
     # Examples section
-    gr.Markdown("## 📝 Example Questions")
-    gr.Examples(
-        examples=[
-            ["What is the main topic of this video?"],
-            ["Can you summarize the key points?"],
-            ["What technologies were mentioned?"],
-            ["Who are the speakers in this video?"],
-            ["What are the main takeaways?"]
-        ],
-        inputs=[question_input]
-    )
+    with gr.Row():
+        gr.Markdown("## 📝 Example Questions")
+    
+    with gr.Row():
+        gr.Examples(
+            examples=[
+                ["What is the main topic of this video?"],
+                ["Can you summarize the key points?"],
+                ["What technologies were mentioned?"],
+                ["Who are the speakers in this video?"],
+                ["What are the main takeaways?"]
+            ],
+            inputs=[question_input],
+            label="Click on any example to try it:"
+        )
+    
+    # Footer
+   
     
     # Event handlers
     process_btn.click(
         fn=process_video,
         inputs=[youtube_url],
-        outputs=[process_status, current_video_title, current_video_uuid]
+        outputs=[process_status, current_video_title, current_video_uuid, video_thumbnail]
     )
     
     reset_btn.click(
         fn=reset_everything,
-        outputs=[youtube_url, process_status, current_video_title, chatbot, selected_video_display, current_video_uuid]
+        outputs=[youtube_url, process_status, current_video_title, chatbot, current_video_uuid, video_thumbnail]
     )
     
     ask_btn.click(
@@ -200,10 +284,13 @@ with gr.Blocks(title="VideoQuery AI") as app:
         outputs=[chatbot, question_input]
     )
     
-    current_video_title.change(
-        fn=lambda title: title,
-        inputs=[current_video_title],
-        outputs=[selected_video_display]
+    
+    
+    # Update thumbnail when video changes
+    current_video_uuid.change(
+        fn=update_thumbnail_display,
+        inputs=[current_video_title, current_video_uuid],
+        outputs=[video_thumbnail]
     )
 
 
@@ -218,7 +305,12 @@ if __name__ == "__main__":
         server_port=PORT,
         share=False,
         show_error=True,
-        debug=True
+        debug=True,
+        favicon_path=None,
+        app_kwargs={
+            "docs_url": None,
+            "redoc_url": None,
+        }
     )
     
     # Print the correct URL to visit

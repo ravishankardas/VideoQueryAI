@@ -34,3 +34,4 @@ rank_bm25
 langchain-experimental
 gradio
 faiss-cpu
+Pillow
