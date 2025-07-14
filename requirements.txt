@@ -1,43 +1,36 @@
 # Core dependencies
-yt-dlp==2023.12.30
-openai-whisper==20231117
-youtube-transcript-api==0.6.2
+yt-dlp
+openai-whisper
+youtube-transcript-api
 
 # Language processing and embeddings
-sentence-transformers==2.2.2
-langchain==0.1.0
-langchain-openai==0.0.5
-openai==1.7.2
+sentence-transformers
+langchain
+langchain-openai
+openai
 
 # Vector database
-chromadb==0.4.22
+chromadb
 
 # Machine learning
-torch==2.1.0
-torchvision==0.16.0
-torchaudio==2.1.0
+torch
+
 
 # Text processing
-transformers==4.21.3
-huggingface-hub==0.16.4
+transformers
+huggingface-hub
 
-# Audio processing
-speechrecognition==3.10.1
-pyaudio==0.2.11
-
-# Text-to-speech (Windows)
-pyttsx3==2.90
-
-# GPT4All for local LLM
-gpt4all==2.5.4
 
 # Data processing
-pandas==2.1.4
-numpy==1.24.3
+pandas
+numpy
 
 # Environment and utilities
-python-dotenv==1.0.0
-tqdm==4.66.1
+python-dotenv
+tqdm
 
-# Optional: For better audio handling
-ffmpeg-python==0.2.0
+ffmpeg-python
+rank_bm25
+langchain-experimental
+gradio
+faiss-cpu

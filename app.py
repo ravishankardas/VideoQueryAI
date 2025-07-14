@@ -1,45 +1,24 @@
 import os
-os.environ["GRADIO_SERVER_NAME"] = "0.0.0.0"
-os.environ["GRADIO_SERVER_PORT"] = "7860"
+
+# Railway port configuration - get port from environment or default to 7860
+PORT = int(os.environ.get("PORT", 7860))
+
+# For local development, use localhost
+# For Railway deployment, use 0.0.0.0
+if os.environ.get("RAILWAY_ENVIRONMENT_NAME"):
+    # Running on Railway
+    HOST = "0.0.0.0"
+else:
+    # Running locally
+    HOST = "127.0.0.1"
+
+os.environ["GRADIO_SERVER_NAME"] = HOST
+os.environ["GRADIO_SERVER_PORT"] = str(PORT)
 
 import gradio as gr # type: ignore
 import re
 
-# Monkey patch Gradio to force host binding
-def patch_gradio():
-    try:
-        import gradio.networking as networking # type: ignore
-        networking.LOCALHOST_NAME = "0.0.0.0"
-        print("✅ Patched Gradio networking")
-    except Exception as e:
-        print(f"⚠️ Could not patch networking: {e}")
-    
-    try:
-        import gradio.routes # type: ignore
-        original_launch = gr.Blocks.launch
-        
-        def patched_launch(self, *args, **kwargs):
-            kwargs['server_name'] = "0.0.0.0"
-            kwargs['server_port'] = 7860
-            print(f"🔧 Forcing launch with: {kwargs}")
-            return original_launch(self, *args, **kwargs)
-        
-        gr.Blocks.launch = patched_launch
-        print("✅ Patched Gradio launch method")
-    except Exception as e:
-        print(f"⚠️ Could not patch launch: {e}")
-
-# Apply patches before creating the app
-patch_gradio()
-
-
-
-
-
-
-
-import gradio as gr # type: ignore
-import re
+# Your existing code here...
 from pipeline import YouTubeRAGPipeline
 
 # Initialize pipeline
@@ -125,28 +104,6 @@ def ask_question(question, video_uuid, chat_history):
         chat_history.append([question, error_msg])
         return chat_history, ""
 
-def get_processed_videos():
-    """Get list of processed videos for dropdown"""
-    if not processed_videos:
-        return []
-    return [f"{info['title']} ({uuid[:8]})" for uuid, info in processed_videos.items()]
-
-def select_video(selected_video):
-    """Extract UUID from selected video"""
-    if not selected_video:
-        return "", ""
-    
-    # Extract UUID from the selection (last 8 chars in parentheses)
-    uuid_match = re.search(r'\(([a-f0-9]{8})\)$', selected_video)
-    if uuid_match:
-        uuid = uuid_match.group(1)
-        # Find full UUID
-        for full_uuid, info in processed_videos.items():
-            if full_uuid.startswith(uuid):
-                return info['title'], full_uuid
-    
-    return "", ""
-
 def reset_everything():
     """Reset all data"""
     global processed_videos
@@ -206,8 +163,6 @@ with gr.Blocks(title="VideoQuery AI") as app:
                 )
                 ask_btn = gr.Button("Send", variant="primary", scale=1)
     
-    # Remove the big answer section - it's now in the chatbot
-    
     # Examples section
     gr.Markdown("## 📝 Example Questions")
     gr.Examples(
@@ -221,44 +176,30 @@ with gr.Blocks(title="VideoQuery AI") as app:
         inputs=[question_input]
     )
     
-    # Footer
-    # gr.Markdown("""
-    # ---
-    # **Features:** Hybrid Search • Semantic Chunking • Citation Tracking • Multi-Video Support
-    
-    # **Powered by:** OpenAI Whisper • ChromaDB • LangChain • Sentence Transformers
-    # """)
-    
     # Event handlers
-    
-    # Process video event
     process_btn.click(
         fn=process_video,
         inputs=[youtube_url],
         outputs=[process_status, current_video_title, current_video_uuid]
     )
     
-    # Reset everything event
     reset_btn.click(
         fn=reset_everything,
         outputs=[youtube_url, process_status, current_video_title, chatbot, selected_video_display, current_video_uuid]
     )
     
-    # Ask question event - now updates chatbot
     ask_btn.click(
         fn=ask_question,
         inputs=[question_input, current_video_uuid, chatbot],
         outputs=[chatbot, question_input]
     )
     
-    # Also allow Enter key to send message
     question_input.submit(
         fn=ask_question,
         inputs=[question_input, current_video_uuid, chatbot],
         outputs=[chatbot, question_input]
     )
     
-    # Auto-populate current video when processing completes
     current_video_title.change(
         fn=lambda title: title,
         inputs=[current_video_title],
@@ -268,30 +209,21 @@ with gr.Blocks(title="VideoQuery AI") as app:
 
 if __name__ == "__main__":
     print("🚀 Starting Gradio app...")
-    print(f"Environment GRADIO_SERVER_NAME: {os.environ.get('GRADIO_SERVER_NAME')}")
-    print(f"Environment GRADIO_SERVER_PORT: {os.environ.get('GRADIO_SERVER_PORT')}")
+    print(f"Host: {HOST}")
+    print(f"Port: {PORT}")
+    print(f"Environment: {'Railway' if os.environ.get('RAILWAY_ENVIRONMENT_NAME') else 'Local'}")
     
     app.launch(
-        server_name="0.0.0.0",
-        server_port=7860,
+        server_name=HOST,
+        server_port=PORT,
         share=False,
         show_error=True,
         debug=True
     )
-
     
-# Launch the app
-# if __name__ == "__main__":
-#     import uvicorn
-    
-#     # Convert Gradio app to FastAPI
-#     fastapi_app = gr.mount_gradio_app(app, app, path="/")
-    
-#     print("🚀 Starting app with uvicorn on 0.0.0.0:7860...")
-    
-#     uvicorn.run(
-#         fastapi_app,
-#         host="0.0.0.0",
-#         port=7860,
-#         log_level="info"
-#     )
+    # Print the correct URL to visit
+    if HOST == "127.0.0.1":
+        print(f"\n🌐 Visit: http://localhost:{PORT}")
+        print(f"🌐 Or: http://127.0.0.1:{PORT}")
+    else:
+        print(f"\n🌐 App running on all interfaces: {HOST}:{PORT}")
