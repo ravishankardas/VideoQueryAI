@@ -192,7 +192,7 @@ with gr.Blocks(title="VideoQuery AI", theme=gr.themes.Soft()) as app:
             
             with gr.Row():
                 process_btn = gr.Button("🚀 Process Video", variant="primary", size="lg")
-                reset_btn = gr.Button("🔄 Reset All", variant="secondary")
+                # reset_btn = gr.Button("🔄 Reset All", variant="secondary")
             
             process_status = gr.Textbox(label="Status", interactive=False, lines=2)
             
@@ -267,10 +267,10 @@ with gr.Blocks(title="VideoQuery AI", theme=gr.themes.Soft()) as app:
         outputs=[process_status, current_video_title, current_video_uuid, video_thumbnail]
     )
     
-    reset_btn.click(
-        fn=reset_everything,
-        outputs=[youtube_url, process_status, current_video_title, chatbot, current_video_uuid, video_thumbnail]
-    )
+    # reset_btn.click(
+    #     fn=reset_everything,
+    #     outputs=[youtube_url, process_status, current_video_title, chatbot, current_video_uuid, video_thumbnail]
+    # )
     
     ask_btn.click(
         fn=ask_question,
